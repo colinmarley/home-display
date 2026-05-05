@@ -67,7 +67,7 @@ export default function PhotoSlideshow({ photoIntervalMs, onWake }: Props) {
     >
       {current && (
         <img
-          src={`/api/photo/proxy?id=${current.id}`}
+          src={`/api/photo/proxy?id=${encodeURIComponent(current.id)}`}
           alt=""
           style={{
             width: "100%",

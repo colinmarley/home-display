@@ -3,6 +3,13 @@ export interface ImmichAsset {
   originalFileName: string;
 }
 
+interface RawImmichAsset {
+  id?: string;
+  assetId?: string;
+  type?: string;
+  originalFileName?: string;
+}
+
 export async function getAlbumAssets(): Promise<ImmichAsset[]> {
   const baseUrl = process.env.IMMICH_BASE_URL;
   const apiKey = process.env.IMMICH_API_KEY;
@@ -16,7 +23,14 @@ export async function getAlbumAssets(): Promise<ImmichAsset[]> {
   if (!res.ok) return [];
 
   const data = await res.json();
-  return ((data.assets as unknown[]) ?? []).filter(
-    (a: unknown) => (a as { type: string }).type === "IMAGE"
-  ) as ImmichAsset[];
+  const assets = ((data.assets as RawImmichAsset[]) ?? []).filter(
+    (a) => a.type === "IMAGE"
+  );
+
+  return assets
+    .map((a) => ({
+      id: a.id ?? a.assetId ?? "",
+      originalFileName: a.originalFileName ?? "",
+    }))
+    .filter((a) => a.id.length > 0);
 }

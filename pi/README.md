@@ -31,7 +31,7 @@ ssh pi@YOUR_PI_HOSTNAME.local
 ## Step 3 — Run the setup script
 
 The setup script is served by the home-display app server.
-Make sure the server is running first (`docker compose up -d` in `/opt/home-display`).
+Make sure the server is running first (`docker compose up -d` in `/home/colin/code/home-display`).
 
 ```bash
 curl -s http://YOUR_SERVER_HOST:3001/setup.sh | sudo bash -s http://YOUR_SERVER_HOST:3001
@@ -65,7 +65,7 @@ To force an immediate reload: touch the screen and wait, or SSH in and reboot.
 To update the server:
 ```bash
 ssh your-server-host
-cd /opt/home-display
+cd /home/colin/code/home-display
 git pull
 docker compose up -d --build
 ```

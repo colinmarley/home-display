@@ -15,7 +15,7 @@ The display app (Next.js) runs in a Docker container on your server and is serve
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  your server — always-on host                                              │
-│  /opt/home-display/docker-compose.yml  →  port 3001                        │
+│  /home/colin/code/home-display/docker-compose.yml  →  port 3001            │
 │                                                                             │
 │  Next.js app                                                                │
 │    /api/calendar  ← fetches Google + Apple iCal URLs every 15 min          │
@@ -119,17 +119,17 @@ From your dev machine, push to GitHub and clone on your server — or use `scp`:
 ```bash
 # Option A: GitHub
 ssh your-server-host
-git clone https://github.com/colinmarley/home-display /opt/home-display
+git clone https://github.com/colinmarley/home-display /home/colin/code/home-display
 
 # Option B: scp from Windows
-scp -r /c/Users/colin/code/home-display your-server-host:/opt/home-display
+scp -r /c/Users/colin/code/home-display your-server-host:/home/colin/code/home-display
 ```
 
 ### 2.2 Create the .env file on your server
 
 ```bash
 ssh your-server-host
-cd /opt/home-display
+cd /home/colin/code/home-display
 cp .env.example .env
 nano .env   # or: vim .env
 ```
@@ -156,7 +156,7 @@ git status   # .env should not appear
 ### 2.3 Build and start the container
 
 ```bash
-cd /opt/home-display
+cd /home/colin/code/home-display
 docker compose up -d --build
 ```
 
@@ -266,11 +266,11 @@ After reboot, the Pi should boot directly into the dashboard. You will see:
 
 ## Configuration reference
 
-All settings live in `/opt/home-display/.env` on your server. Edit and restart to apply:
+All settings live in `/home/colin/code/home-display/.env` on your server. Edit and restart to apply:
 
 ```bash
 ssh your-server-host
-cd /opt/home-display
+cd /home/colin/code/home-display
 nano .env
 docker compose restart
 ```
@@ -307,7 +307,7 @@ const sources = [
 
 ```bash
 ssh your-server-host
-cd /opt/home-display
+cd /home/colin/code/home-display
 git pull
 docker compose up -d --build
 ```
