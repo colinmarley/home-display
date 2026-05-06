@@ -162,16 +162,16 @@ export default function MonthView({ events, onDaySelect }: Props) {
 
               {/* Events */}
               <div style={{ display: "flex", flexDirection: "column", gap: "1px", overflow: "hidden" }}>
-                {dayEvents.slice(0, 3).map((e) => (
+                {dayEvents.slice(0, 5).map((e) => (
                   <div
                     key={e.id}
                     style={{
                       background: e.color + "33",
                       borderLeft: `2px solid ${e.color}`,
                       borderRadius: "2px",
-                      padding: "0px 3px",
-                      fontSize: "0.62rem",
-                      lineHeight: 1.45,
+                      padding: "2px 4px",
+                      fontSize: "0.74rem",
+                      lineHeight: 1.3,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -181,9 +181,9 @@ export default function MonthView({ events, onDaySelect }: Props) {
                     {e.title}
                   </div>
                 ))}
-                {dayEvents.length > 3 && (
-                  <span style={{ fontSize: "0.55rem", color: "var(--text-dim)", paddingLeft: "2px" }}>
-                    +{dayEvents.length - 3} more
+                {dayEvents.length > 5 && (
+                  <span style={{ fontSize: "0.62rem", color: "var(--text-dim)", paddingLeft: "2px" }}>
+                    +{dayEvents.length - 5} more
                   </span>
                 )}
               </div>
