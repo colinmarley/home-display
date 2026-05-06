@@ -15,8 +15,6 @@ export default async function Home() {
     getWeekForecast().catch(() => []),
   ]);
 
-  const idleTimeoutMs =
-    Number(process.env.IDLE_TIMEOUT_MINUTES ?? 5) * 60 * 1000;
   const photoIntervalMs =
     Number(process.env.PHOTO_INTERVAL_SECONDS ?? 30) * 1000;
 
@@ -24,7 +22,6 @@ export default async function Home() {
     <DashboardClient
       events={events}
       forecast={forecast}
-      idleTimeoutMs={idleTimeoutMs}
       photoIntervalMs={photoIntervalMs}
     />
   );

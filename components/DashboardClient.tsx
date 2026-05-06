@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CalEvent } from "@/lib/calendar";
 import type { DayForecast } from "@/lib/weather";
 import ClockDate from "./ClockDate";
@@ -12,33 +12,16 @@ import PhotoSlideshow from "./PhotoSlideshow";
 interface Props {
   events: CalEvent[];
   forecast: DayForecast[];
-  idleTimeoutMs: number;
   photoIntervalMs: number;
 }
 
 export default function DashboardClient({
   events,
   forecast,
-  idleTimeoutMs,
   photoIntervalMs,
 }: Props) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [idle, setIdle] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const resetIdle = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setIdle(true), idleTimeoutMs);
-  };
-
-  useEffect(() => {
-    resetIdle();
-    window.addEventListener("pointerdown", resetIdle);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      window.removeEventListener("pointerdown", resetIdle);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showPhotos, setShowPhotos] = useState(false);
 
   // Auto-reload to pick up fresh calendar/weather data
   useEffect(() => {
@@ -46,13 +29,13 @@ export default function DashboardClient({
     return () => clearInterval(id);
   }, []);
 
-  const wakeFromIdle = () => {
-    setIdle(false);
-    resetIdle();
-  };
-
-  if (idle) {
-    return <PhotoSlideshow photoIntervalMs={photoIntervalMs} onWake={wakeFromIdle} />;
+  if (showPhotos) {
+    return (
+      <PhotoSlideshow
+        photoIntervalMs={photoIntervalMs}
+        onWake={() => setShowPhotos(false)}
+      />
+    );
   }
 
   if (selectedDay) {
@@ -90,6 +73,27 @@ export default function DashboardClient({
         <ClockDate />
         <div style={{ height: "1px", background: "var(--border)" }} />
         <WeatherStrip forecast={forecast} />
+        <div style={{ height: "1px", background: "var(--border)" }} />
+        {/* Photos toggle */}
+        <button
+          onPointerDown={() => setShowPhotos(true)}
+          style={{
+            background: "none",
+            border: "1px solid var(--border)",
+            borderRadius: "6px",
+            color: "var(--text-dim)",
+            fontSize: "0.75rem",
+            padding: "6px 8px",
+            textAlign: "left",
+            cursor: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          <span style={{ fontSize: "1rem" }}>🖼️</span>
+          Photos
+        </button>
       </aside>
 
       {/* Week calendar */}
