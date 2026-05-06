@@ -28,7 +28,7 @@ export default function ClockDate() {
     <div className="flex flex-col gap-0.5">
       <div
         style={{
-          fontSize: "2.4rem",
+          fontSize: "2rem",
           fontWeight: 700,
           letterSpacing: "-0.02em",
           fontVariantNumeric: "tabular-nums",
@@ -37,11 +37,11 @@ export default function ClockDate() {
         }}
       >
         {h12}:{m}
-        <span style={{ fontSize: "1rem", fontWeight: 400, marginLeft: "4px", color: "var(--text-dim)" }}>
+        <span style={{ fontSize: "0.85rem", fontWeight: 400, marginLeft: "4px", color: "var(--text-dim)" }}>
           {ampm}
         </span>
       </div>
-      <div style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>
+      <div style={{ fontSize: "0.78rem", color: "var(--text-dim)" }}>
         {DAY_NAMES[now.getDay()]}, {MONTH_NAMES[now.getMonth()]} {now.getDate()}
       </div>
     </div>

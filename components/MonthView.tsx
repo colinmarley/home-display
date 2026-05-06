@@ -150,7 +150,7 @@ export default function MonthView({ events, onDaySelect }: Props) {
               {/* Day number */}
               <span
                 style={{
-                  fontSize: "0.7rem",
+                  fontSize: "0.75rem",
                   fontWeight: isToday ? 700 : 400,
                   color: isToday ? "var(--accent-google)" : "var(--text)",
                   lineHeight: 1.4,
@@ -162,7 +162,7 @@ export default function MonthView({ events, onDaySelect }: Props) {
 
               {/* Events */}
               <div style={{ display: "flex", flexDirection: "column", gap: "1px", overflow: "hidden" }}>
-                {dayEvents.slice(0, 4).map((e) => (
+                {dayEvents.slice(0, 3).map((e) => (
                   <div
                     key={e.id}
                     style={{
@@ -170,8 +170,8 @@ export default function MonthView({ events, onDaySelect }: Props) {
                       borderLeft: `2px solid ${e.color}`,
                       borderRadius: "2px",
                       padding: "0px 3px",
-                      fontSize: "0.55rem",
-                      lineHeight: 1.4,
+                      fontSize: "0.62rem",
+                      lineHeight: 1.45,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -181,9 +181,9 @@ export default function MonthView({ events, onDaySelect }: Props) {
                     {e.title}
                   </div>
                 ))}
-                {dayEvents.length > 4 && (
-                  <span style={{ fontSize: "0.5rem", color: "var(--text-dim)", paddingLeft: "2px" }}>
-                    +{dayEvents.length - 4} more
+                {dayEvents.length > 3 && (
+                  <span style={{ fontSize: "0.55rem", color: "var(--text-dim)", paddingLeft: "2px" }}>
+                    +{dayEvents.length - 3} more
                   </span>
                 )}
               </div>

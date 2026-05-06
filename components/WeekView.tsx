@@ -91,10 +91,10 @@ export default function WeekView({ events, onDaySelect }: Props) {
 
             {/* Events */}
             <div
-              className="flex flex-col gap-0.5 p-0.5 overflow-hidden"
-              style={{ flex: 1 }}
+              className="flex flex-col gap-0.5 p-0.5"
+              style={{ flex: 1, overflowY: "auto" }}
             >
-              {dayEvents.slice(0, 8).map((e) => (
+              {dayEvents.slice(0, 12).map((e) => (
                 <div
                   key={e.id}
                   style={{
@@ -102,8 +102,8 @@ export default function WeekView({ events, onDaySelect }: Props) {
                     borderLeft: `2px solid ${e.color}`,
                     borderRadius: "2px",
                     padding: "1px 3px",
-                    fontSize: "0.62rem",
-                    lineHeight: 1.3,
+                    fontSize: "0.68rem",
+                    lineHeight: 1.35,
                     overflow: "hidden",
                     whiteSpace: "nowrap",
                     textOverflow: "ellipsis",
@@ -119,11 +119,11 @@ export default function WeekView({ events, onDaySelect }: Props) {
                   {e.title}
                 </div>
               ))}
-              {dayEvents.length > 8 && (
+              {dayEvents.length > 12 && (
                 <div
                   style={{ fontSize: "0.6rem", color: "var(--text-dim)", padding: "1px 3px" }}
                 >
-                  +{dayEvents.length - 8} more
+                  +{dayEvents.length - 12} more
                 </div>
               )}
             </div>

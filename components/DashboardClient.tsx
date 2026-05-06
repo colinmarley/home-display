@@ -63,12 +63,12 @@ export default function DashboardClient({
       {/* Left sidebar */}
       <aside
         style={{
-          width: "185px",
+          width: "150px",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          padding: "14px 12px",
-          gap: "14px",
+          padding: "10px 10px",
+          gap: "10px",
           borderRight: "1px solid var(--border)",
         }}
       >

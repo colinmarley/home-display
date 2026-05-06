@@ -1,11 +1,15 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { CalEvent } from "@/lib/calendar";
 import { format, parseISO } from "date-fns";
 
 const HOUR_START = 6;
 const HOUR_END = 22; // exclusive
 const TOTAL_HOURS = HOUR_END - HOUR_START;
+// 52px per hour → 16 hours = 832px total; comfortably scrollable on 480px screen
+const HOUR_HEIGHT_PX = 52;
+const MS_PER_PX = HOUR_HEIGHT_PX / (60 * 60 * 1000);
 
 interface Props {
   dateISO: string; // yyyy-MM-dd
@@ -15,14 +19,13 @@ interface Props {
 
 interface Positioned {
   event: CalEvent;
-  top: number; // percent
-  height: number; // percent
+  topPx: number;
+  heightPx: number;
 }
 
 function positionEvents(events: CalEvent[], date: string): Positioned[] {
   const dayStart = new Date(`${date}T${String(HOUR_START).padStart(2, "0")}:00:00`);
   const dayEnd = new Date(`${date}T${String(HOUR_END).padStart(2, "0")}:00:00`);
-  const totalMs = dayEnd.getTime() - dayStart.getTime();
 
   return events
     .filter((e) => {
@@ -38,11 +41,12 @@ function positionEvents(events: CalEvent[], date: string): Positioned[] {
       const eEnd = new Date(e.end);
       const clampedStart = eStart < dayStart ? dayStart : eStart;
       const clampedEnd = eEnd > dayEnd ? dayEnd : eEnd;
-      const top =
-        ((clampedStart.getTime() - dayStart.getTime()) / totalMs) * 100;
-      const height =
-        ((clampedEnd.getTime() - clampedStart.getTime()) / totalMs) * 100;
-      return { event: e, top, height: Math.max(height, 2) };
+      const topPx = (clampedStart.getTime() - dayStart.getTime()) * MS_PER_PX;
+      const heightPx = Math.max(
+        (clampedEnd.getTime() - clampedStart.getTime()) * MS_PER_PX,
+        24
+      );
+      return { event: e, topPx, heightPx };
     });
 }
 
@@ -70,6 +74,14 @@ export default function DayView({ dateISO, events, onBack }: Props) {
   const hours = Array.from({ length: TOTAL_HOURS }, (_, i) => HOUR_START + i);
   const positioned = positionEvents(events, dateISO);
   const allDay = allDayEvents(events, dateISO);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to 8am (2 hours past start) when opening
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = Math.max(0, (8 - HOUR_START) * HOUR_HEIGHT_PX - 16);
+    }
+  }, [dateISO]);
 
   return (
     <div
@@ -119,7 +131,7 @@ export default function DayView({ dateISO, events, onBack }: Props) {
                 borderLeft: `2px solid ${e.color}`,
                 borderRadius: "2px",
                 padding: "2px 6px",
-                fontSize: "0.75rem",
+                fontSize: "0.8rem",
                 color: "var(--text)",
               }}
             >
@@ -129,78 +141,80 @@ export default function DayView({ dateISO, events, onBack }: Props) {
         </div>
       )}
 
-      {/* Hourly timeline */}
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        {/* Hour lines + labels */}
-        {hours.map((h) => {
-          const pct = ((h - HOUR_START) / TOTAL_HOURS) * 100;
-          const label =
-            h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
-          return (
-            <div
-              key={h}
-              style={{
-                position: "absolute",
-                top: `${pct}%`,
-                left: 0,
-                right: 0,
-                display: "flex",
-                alignItems: "flex-start",
-              }}
-            >
-              <span
+      {/* Hourly timeline — scrollable */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
+        <div style={{ position: "relative", height: `${TOTAL_HOURS * HOUR_HEIGHT_PX}px` }}>
+          {/* Hour lines + labels */}
+          {hours.map((h) => {
+            const topPx = (h - HOUR_START) * HOUR_HEIGHT_PX;
+            const hourLabel =
+              h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
+            return (
+              <div
+                key={h}
                 style={{
-                  width: "52px",
-                  fontSize: "0.65rem",
-                  color: "var(--text-dim)",
-                  textAlign: "right",
-                  paddingRight: "8px",
-                  flexShrink: 0,
-                  lineHeight: 1,
+                  position: "absolute",
+                  top: `${topPx}px`,
+                  left: 0,
+                  right: 0,
+                  display: "flex",
+                  alignItems: "flex-start",
                 }}
               >
-                {label}
-              </span>
-              <div
-                style={{
-                  flex: 1,
-                  height: "1px",
-                  background: "var(--border)",
-                  marginTop: "0.4em",
-                }}
-              />
-            </div>
-          );
-        })}
-
-        {/* Event blocks */}
-        {positioned.map(({ event, top, height }) => (
-          <div
-            key={event.id}
-            style={{
-              position: "absolute",
-              top: `${top}%`,
-              height: `${height}%`,
-              left: "60px",
-              right: "8px",
-              background: event.color + "33",
-              borderLeft: `3px solid ${event.color}`,
-              borderRadius: "3px",
-              padding: "2px 6px",
-              overflow: "hidden",
-              minHeight: "18px",
-            }}
-          >
-            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text)" }}>
-              {event.title}
-            </div>
-            {height > 4 && (
-              <div style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
-                {fmt12(event.start)} – {fmt12(event.end)}
+                <span
+                  style={{
+                    width: "52px",
+                    fontSize: "0.7rem",
+                    color: "var(--text-dim)",
+                    textAlign: "right",
+                    paddingRight: "8px",
+                    paddingTop: "2px",
+                    flexShrink: 0,
+                    lineHeight: 1,
+                  }}
+                >
+                  {hourLabel}
+                </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: "1px",
+                    background: "var(--border)",
+                    marginTop: "0.55em",
+                  }}
+                />
               </div>
-            )}
-          </div>
-        ))}
+            );
+          })}
+
+          {/* Event blocks */}
+          {positioned.map(({ event, topPx, heightPx }) => (
+            <div
+              key={event.id}
+              style={{
+                position: "absolute",
+                top: `${topPx}px`,
+                height: `${heightPx}px`,
+                left: "60px",
+                right: "8px",
+                background: event.color + "33",
+                borderLeft: `3px solid ${event.color}`,
+                borderRadius: "3px",
+                padding: "2px 6px",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.3 }}>
+                {event.title}
+              </div>
+              {heightPx > 32 && (
+                <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
+                  {fmt12(event.start)} – {fmt12(event.end)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
