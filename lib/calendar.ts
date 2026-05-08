@@ -14,30 +14,25 @@ export async function getCalendarEvents(
   startDate: Date,
   endDate: Date
 ): Promise<CalEvent[]> {
-  const sources: { url: string; source: "google" | "apple"; color: string }[] =
-    [];
-
-  if (process.env.GOOGLE_ICAL_URL)
-    sources.push({
-      url: process.env.GOOGLE_ICAL_URL,
-      source: "google",
-      color: "#4285f4",
-    });
-
-  if (process.env.APPLE_ICAL_URL)
-    sources.push({
-      url: process.env.APPLE_ICAL_URL,
-      source: "apple",
-      color: "#fc3158",
-    });
+  const sources = getConfiguredSources();
 
   const settled = await Promise.allSettled(
     sources.map((s) => fetchIcalEvents(s.url, s.source, s.color))
   );
 
   const all: CalEvent[] = [];
-  for (const r of settled) {
-    if (r.status === "fulfilled") all.push(...r.value);
+  for (const [idx, r] of settled.entries()) {
+    if (r.status === "fulfilled") {
+      all.push(...r.value);
+      continue;
+    }
+
+    const failed = sources[idx];
+    // Keep rendering available sources while surfacing what failed.
+    console.error(
+      `[calendar] Failed to fetch ${failed?.source ?? "unknown"} iCal source (${failed?.envKey ?? "unknown env"})`,
+      r.reason
+    );
   }
 
   return all.filter((e) => {
@@ -79,6 +74,51 @@ async function fetchIcalEvents(
   }
 
   return events;
+}
+
+function getConfiguredSources(): {
+  url: string;
+  source: "google" | "apple";
+  color: string;
+  envKey: string;
+}[] {
+  const byPrefix = (prefix: string): [string, string][] => {
+    const entries = Object.entries(process.env)
+      .filter(([k, v]) => k === prefix || k.startsWith(`${prefix}_`))
+      .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+      .sort(([a], [b]) => a.localeCompare(b)) as [string, string][];
+
+    return entries;
+  };
+
+  const google = byPrefix("GOOGLE_ICAL_URL").map(([envKey, url]) => ({
+    url: normalizeIcalUrl(url),
+    source: "google" as const,
+    color: "#4285f4",
+    envKey,
+  }));
+
+  const apple = [
+    ...byPrefix("APPLE_ICAL_URL"),
+    ...byPrefix("ICLOUD_ICAL_URL"),
+  ].map(([envKey, url]) => ({
+    url: normalizeIcalUrl(url),
+    source: "apple" as const,
+    color: "#fc3158",
+    envKey,
+  }));
+
+  return [...google, ...apple];
+}
+
+function normalizeIcalUrl(url: string): string {
+  const trimmed = url.trim().replace(/^['"]|['"]$/g, "");
+
+  if (trimmed.startsWith("webcal://")) {
+    return `https://${trimmed.slice("webcal://".length)}`;
+  }
+
+  return trimmed;
 }
 
 function toISO(d: Date): string {

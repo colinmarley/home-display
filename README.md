@@ -77,9 +77,11 @@ This is a private secret URL — do not share it.
 3. Check **"Public Calendar"**
 4. Click **Copy Link** — it looks like:
    ```
-   https://p01-caldav.icloud.com/published/2/XXXXXXXXXXXXXXXXXXXXXXXX
+   webcal://p01-caldav.icloud.com/published/2/XXXXXXXXXXXXXXXXXXXXXXXX
    ```
 5. Save this URL — it is the `APPLE_ICAL_URL` in your `.env`
+
+> **Tip:** Both `webcal://` and `https://` links are accepted. The app normalizes `webcal://` automatically.
 
 > **Note:** The public link is a read-only iCal feed — it does not expose write access to your calendar.
 
@@ -289,15 +291,18 @@ docker compose restart
 
 ### Adding multiple calendars
 
-The current implementation supports one Google and one Apple iCal URL. To add more calendars (e.g., a shared family calendar), edit `lib/calendar.ts` and extend the `sources` array:
+Multiple iCal URLs are auto-detected if you add suffixed variables:
 
-```typescript
-const sources = [
-  { url: process.env.GOOGLE_ICAL_URL!,   source: 'google', color: '#4285f4' },
-  { url: process.env.GOOGLE_ICAL_URL_2!, source: 'google', color: '#0f9d58' },
-  { url: process.env.APPLE_ICAL_URL!,    source: 'apple',  color: '#fc3158' },
-]
+```env
+GOOGLE_ICAL_URL=https://...
+GOOGLE_ICAL_URL_2=https://...
+APPLE_ICAL_URL=webcal://...
+APPLE_ICAL_URL_2=https://...
+# Optional alias prefix also supported:
+ICLOUD_ICAL_URL=https://...
 ```
+
+No code changes are needed; restart the container after editing `.env`.
 
 ---
 
