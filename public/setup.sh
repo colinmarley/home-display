@@ -37,23 +37,47 @@ EOF
 # ── Blank cursor theme (hides hardware cursor in cage/Wayland) ────────────────
 echo "==> Creating blank cursor theme..."
 CURSOR_DIR="/home/$KIOSK_USER/.icons/blank/cursors"
-mkdir -p "$CURSOR_DIR"
-python3 - <<'PYEOF'
-import struct, zlib, os
-def chunk(t, d):
-    return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t+d)&0xffffffff)
-w, h = 32, 32
-row = b'\x00' + b'\x00' * (w * 4)
-png = (b'\x89PNG\r\n\x1a\n' +
-    chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) +
-    chunk(b'IDAT', zlib.compress(row * h)) +
-    chunk(b'IEND', b''))
-open('/tmp/blank.png', 'wb').write(png)
+SYS_CURSOR_DIR="/usr/share/icons/blank/cursors"
+mkdir -p "$CURSOR_DIR" "$SYS_CURSOR_DIR"
+
+# Write Xcursor binary directly — multiple nominal sizes so any XCURSOR_SIZE hits
+python3 - "$CURSOR_DIR" "$SYS_CURSOR_DIR" <<'PYEOF'
+import struct, os, sys
+
+def make_xcursor(sizes):
+    IMAGE_TYPE = 0xfffd0002
+    ntoc = len(sizes)
+    header = struct.pack('<4sIII', b'Xcur', 16, 0x00010000, ntoc)
+    toc = b''
+    offset = 16 + 12 * ntoc
+    for size in sizes:
+        toc += struct.pack('<III', IMAGE_TYPE, size, offset)
+        offset += 40  # 36-byte chunk header + 4-byte pixel
+    chunks = b''
+    for size in sizes:
+        chunks += struct.pack('<IIIIIIIII', 36, IMAGE_TYPE, size, 1, 1, 1, 0, 0, 50)
+        chunks += b'\x00\x00\x00\x00'  # 1x1 transparent ARGB pixel
+    return header + toc + chunks
+
+cursor_data = make_xcursor([1, 8, 16, 24, 32, 48])
+cursor_names = ['left_ptr', 'arrow', 'top_left_arrow', 'hand1', 'hand2',
+                'watch', 'xterm', 'pointer', 'cross', 'move',
+                'sb_h_double_arrow', 'sb_v_double_arrow']
+
+for d in sys.argv[1:]:
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, 'default'), 'wb') as f:
+        f.write(cursor_data)
+    for name in cursor_names:
+        target = os.path.join(d, name)
+        if os.path.lexists(target):
+            os.remove(target)
+        os.symlink('default', target)
 PYEOF
-echo '32 0 0 /tmp/blank.png' > /tmp/blank.cur
-xcursorgen /tmp/blank.cur "$CURSOR_DIR/default"
-for name in left_ptr arrow top_left_arrow; do ln -sf default "$CURSOR_DIR/$name"; done
-echo -e '[Icon Theme]\nName=blank' > "/home/$KIOSK_USER/.icons/blank/index.theme"
+
+for dir_path in "$CURSOR_DIR" "$SYS_CURSOR_DIR"; do
+  echo -e '[Icon Theme]\nName=blank' > "$(dirname "$dir_path")/index.theme"
+done
 chown -R "$KIOSK_USER:$KIOSK_USER" "/home/$KIOSK_USER/.icons"
 
 # ── Kiosk launch in .bash_profile ────────────────────────────────────────────
@@ -67,7 +91,7 @@ printf '%s\n' \
   '  mkdir -p "$XDG_RUNTIME_DIR"' \
   '  chmod 700 "$XDG_RUNTIME_DIR"' \
   '  export XCURSOR_THEME=blank' \
-  '  export XCURSOR_SIZE=1' \
+  '  export XCURSOR_SIZE=24' \
   '  export WLR_NO_HARDWARE_CURSORS=1' \
   "  exec cage -- chromium \\" \
   '    --kiosk \' \
