@@ -10,17 +10,40 @@ export interface CalEvent {
   source: "google" | "apple";
 }
 
+interface ConfiguredSource {
+  url: string;
+  source: "google" | "apple";
+  color: string;
+  envKey: string;
+}
+
+export interface CalendarSourceDebug {
+  envKey: string;
+  source: "google" | "apple";
+  urlPreview: string;
+  ok: boolean;
+  rawEventCount: number;
+  inRangeEventCount: number;
+  error?: string;
+}
+
+export interface CalendarDebugResult {
+  ok: boolean;
+  window: {
+    start: string;
+    end: string;
+  };
+  totalInRangeEvents: number;
+  sources: CalendarSourceDebug[];
+}
+
 export async function getCalendarEvents(
   startDate: Date,
   endDate: Date
 ): Promise<CalEvent[]> {
-  const sources = getConfiguredSources();
-
-  const settled = await Promise.allSettled(
-    sources.map((s) => fetchIcalEvents(s.url, s.source, s.color))
-  );
-
+  const { sources, settled } = await fetchCalendarSourceResults();
   const all: CalEvent[] = [];
+
   for (const [idx, r] of settled.entries()) {
     if (r.status === "fulfilled") {
       all.push(...r.value);
@@ -28,7 +51,6 @@ export async function getCalendarEvents(
     }
 
     const failed = sources[idx];
-    // Keep rendering available sources while surfacing what failed.
     console.error(
       `[calendar] Failed to fetch ${failed?.source ?? "unknown"} iCal source (${failed?.envKey ?? "unknown env"})`,
       r.reason
@@ -36,10 +58,81 @@ export async function getCalendarEvents(
   }
 
   return all.filter((e) => {
-    const s = new Date(e.start);
-    const en = new Date(e.end);
-    return s < endDate && en > startDate;
+    const eventStart = new Date(e.start);
+    const eventEnd = new Date(e.end);
+    return eventStart < endDate && eventEnd > startDate;
   });
+}
+
+export async function getCalendarDebug(
+  startDate: Date,
+  endDate: Date
+): Promise<CalendarDebugResult> {
+  const { sources, settled } = await fetchCalendarSourceResults();
+  for (const [idx, r] of settled.entries()) {
+    if (r.status === "rejected") {
+      const failed = sources[idx];
+      console.error(
+        `[calendar] Failed to fetch ${failed?.source ?? "unknown"} iCal source (${failed?.envKey ?? "unknown env"})`,
+        r.reason
+      );
+    }
+  }
+
+  const sourceDebug: CalendarSourceDebug[] = settled.map((r, idx) => {
+    const src = sources[idx];
+
+    if (r.status === "rejected") {
+      return {
+        envKey: src.envKey,
+        source: src.source,
+        urlPreview: redactUrl(src.url),
+        ok: false,
+        rawEventCount: 0,
+        inRangeEventCount: 0,
+        error: toErrorMessage(r.reason),
+      };
+    }
+
+    const inRange = r.value.filter((e) => {
+      const eventStart = new Date(e.start);
+      const eventEnd = new Date(e.end);
+      return eventStart < endDate && eventEnd > startDate;
+    }).length;
+
+    return {
+      envKey: src.envKey,
+      source: src.source,
+      urlPreview: redactUrl(src.url),
+      ok: true,
+      rawEventCount: r.value.length,
+      inRangeEventCount: inRange,
+    };
+  });
+
+  return {
+    ok: sourceDebug.every((s) => s.ok),
+    window: {
+      start: toISO(startDate),
+      end: toISO(endDate),
+    },
+    totalInRangeEvents: sourceDebug.reduce(
+      (sum, s) => sum + s.inRangeEventCount,
+      0
+    ),
+    sources: sourceDebug,
+  };
+}
+
+async function fetchCalendarSourceResults(): Promise<{
+  sources: ConfiguredSource[];
+  settled: PromiseSettledResult<CalEvent[]>[];
+}> {
+  const sources = getConfiguredSources();
+  const settled = await Promise.allSettled(
+    sources.map((s) => fetchIcalEvents(s.url, s.source, s.color))
+  );
+  return { sources, settled };
 }
 
 async function fetchIcalEvents(
@@ -76,12 +169,7 @@ async function fetchIcalEvents(
   return events;
 }
 
-function getConfiguredSources(): {
-  url: string;
-  source: "google" | "apple";
-  color: string;
-  envKey: string;
-}[] {
+function getConfiguredSources(): ConfiguredSource[] {
   const byPrefix = (prefix: string): [string, string][] => {
     const entries = Object.entries(process.env)
       .filter(([k, v]) => k === prefix || k.startsWith(`${prefix}_`))
@@ -119,6 +207,24 @@ function normalizeIcalUrl(url: string): string {
   }
 
   return trimmed;
+}
+
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    const shown = pathParts.slice(0, 2).join("/");
+    const suffix = pathParts.length > 2 ? "/..." : "";
+    return `${parsed.protocol}//${parsed.host}/${shown}${suffix}`;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return "unknown error";
 }
 
 function toISO(d: Date): string {

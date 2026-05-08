@@ -178,6 +178,13 @@ Open **http://YOUR_SERVER_HOST:3001** in a browser on any device on the network.
 > curl -s "YOUR_GOOGLE_ICAL_URL" | head -5
 > # Should output: BEGIN:VCALENDAR
 > ```
+>
+> You can also inspect source-level calendar status from the app:
+> ```bash
+> curl -s http://YOUR_SERVER_HOST:3001/api/calendar/debug
+> curl -s http://YOUR_SERVER_HOST:3001/api/calendar/debug?samples=1
+> ```
+> The debug output shows which iCal source succeeded, how many events were parsed, and any source-specific fetch errors.
 
 ---
 
