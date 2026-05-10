@@ -10,6 +10,8 @@ import MonthView from "./MonthView";
 import DayView from "./DayView";
 import PhotoSlideshow from "./PhotoSlideshow";
 
+const PHOTO_MODE_KEY = "home-display:show-photos";
+
 interface Props {
   events: CalEvent[];
   forecast: DayForecast[];
@@ -25,6 +27,21 @@ export default function DashboardClient({
   const [showPhotos, setShowPhotos] = useState(false);
   const [calView, setCalView] = useState<"week" | "month">("week");
 
+  // Keep slideshow mode across page reloads, but only for this browser session.
+  useEffect(() => {
+    const stored = sessionStorage.getItem(PHOTO_MODE_KEY);
+    if (stored === "1") setShowPhotos(true);
+  }, []);
+
+  const setPhotoMode = (enabled: boolean) => {
+    setShowPhotos(enabled);
+    if (enabled) {
+      sessionStorage.setItem(PHOTO_MODE_KEY, "1");
+      return;
+    }
+    sessionStorage.removeItem(PHOTO_MODE_KEY);
+  };
+
   // Auto-reload to pick up fresh calendar/weather data
   useEffect(() => {
     const id = setInterval(() => window.location.reload(), 15 * 60 * 1000);
@@ -35,7 +52,7 @@ export default function DashboardClient({
     return (
       <PhotoSlideshow
         photoIntervalMs={photoIntervalMs}
-        onWake={() => setShowPhotos(false)}
+        onWake={() => setPhotoMode(false)}
       />
     );
   }
@@ -101,7 +118,7 @@ export default function DashboardClient({
         <div style={{ height: "1px", background: "var(--border)" }} />
         {/* Photos toggle */}
         <button
-          onPointerDown={() => setShowPhotos(true)}
+          onPointerDown={() => setPhotoMode(true)}
           style={{
             background: "none",
             border: "1px solid var(--border)",
