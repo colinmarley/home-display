@@ -2,32 +2,40 @@
 
 import { useEffect, useState } from "react";
 import type { CalEvent } from "@/lib/calendar";
-import type { DayForecast } from "@/lib/weather";
+import type { WeatherData } from "@/lib/weather";
 import ClockDate from "./ClockDate";
 import WeatherStrip from "./WeatherStrip";
 import WeekView from "./WeekView";
 import MonthView from "./MonthView";
 import DayView from "./DayView";
 import PhotoSlideshow from "./PhotoSlideshow";
+import BirthdaySurprise from "./BirthdaySurprise";
 
 const PHOTO_MODE_KEY = "home-display:show-photos";
 
+function isBirthdayDate(dateISO: string): boolean {
+  const d = new Date(dateISO + "T12:00:00");
+  return d.getMonth() === 4 && d.getDate() === 16; // May 16
+}
+
 interface Props {
   events: CalEvent[];
-  forecast: DayForecast[];
+  weatherData: WeatherData;
   photoIntervalMs: number;
 }
 
 export default function DashboardClient({
-  events,
-  forecast,
+  events: initialEvents,
+  weatherData: initialWeatherData,
   photoIntervalMs,
 }: Props) {
+  const [events, setEvents] = useState<CalEvent[]>(initialEvents);
+  const [weatherData, setWeatherData] = useState<WeatherData>(initialWeatherData);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showPhotos, setShowPhotos] = useState(false);
+  const [showBirthday, setShowBirthday] = useState(false);
   const [calView, setCalView] = useState<"week" | "month">("week");
 
-  // Keep slideshow mode across page reloads, but only for this browser session.
   useEffect(() => {
     const stored = sessionStorage.getItem(PHOTO_MODE_KEY);
     if (stored === "1") setShowPhotos(true);
@@ -42,11 +50,48 @@ export default function DashboardClient({
     sessionStorage.removeItem(PHOTO_MODE_KEY);
   };
 
-  // Auto-reload to pick up fresh calendar/weather data
+  // Poll calendar every 5 minutes for fresh events
   useEffect(() => {
-    const id = setInterval(() => window.location.reload(), 15 * 60 * 1000);
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/calendar/events");
+        if (res.ok) setEvents(await res.json());
+      } catch {}
+    };
+    const id = setInterval(poll, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Poll weather every 20 minutes for updated conditions
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/weather");
+        if (res.ok) setWeatherData(await res.json());
+      } catch {}
+    };
+    const id = setInterval(poll, 20 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleDaySelect = (dateISO: string) => {
+    if (isBirthdayDate(dateISO)) {
+      setShowBirthday(true);
+    } else {
+      setSelectedDay(dateISO);
+    }
+  };
+
+  if (showBirthday) {
+    return (
+      <BirthdaySurprise
+        onDismiss={() => {
+          setShowBirthday(false);
+          setSelectedDay("2026-05-16");
+        }}
+      />
+    );
+  }
 
   if (showPhotos) {
     return (
@@ -91,7 +136,7 @@ export default function DashboardClient({
       >
         <ClockDate />
         <div style={{ height: "1px", background: "var(--border)" }} />
-        <WeatherStrip forecast={forecast} />
+        <WeatherStrip weatherData={weatherData} />
         <div style={{ height: "1px", background: "var(--border)" }} />
         {/* Calendar view toggle */}
         <div style={{ display: "flex", gap: "4px" }}>
@@ -141,9 +186,9 @@ export default function DashboardClient({
       {/* Calendar */}
       <div style={{ flex: 1, overflow: "hidden" }}>
         {calView === "week" ? (
-          <WeekView events={events} onDaySelect={setSelectedDay} />
+          <WeekView events={events} onDaySelect={handleDaySelect} />
         ) : (
-          <MonthView events={events} onDaySelect={setSelectedDay} />
+          <MonthView events={events} onDaySelect={handleDaySelect} />
         )}
       </div>
     </main>

@@ -1,18 +1,18 @@
 import { getCalendarEvents } from "@/lib/calendar";
-import { getWeekForecast } from "@/lib/weather";
+import { getWeatherData } from "@/lib/weather";
 import DashboardClient from "@/components/DashboardClient";
 import { startOfWeek, addWeeks } from "date-fns";
 
-export const revalidate = 900; // 15 min server-side cache
+export const revalidate = 60; // 1-min server-side cache — client polls for fresher data
 
 export default async function Home() {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const fetchEnd = addWeeks(weekStart, 3);
 
-  const [events, forecast] = await Promise.all([
+  const [events, weatherData] = await Promise.all([
     getCalendarEvents(weekStart, fetchEnd).catch(() => []),
-    getWeekForecast().catch(() => []),
+    getWeatherData().catch(() => ({ current: null, forecast: [] })),
   ]);
 
   const photoIntervalMs =
@@ -21,7 +21,7 @@ export default async function Home() {
   return (
     <DashboardClient
       events={events}
-      forecast={forecast}
+      weatherData={weatherData}
       photoIntervalMs={photoIntervalMs}
     />
   );

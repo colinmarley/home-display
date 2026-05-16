@@ -19,7 +19,6 @@ function eventsForDay(events: CalEvent[], day: Date): CalEvent[] {
   return events.filter((e) => {
     const start = new Date(e.start);
     const end = new Date(e.end);
-    // Include all-day events and events that overlap the day
     const dayStart = new Date(day); dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
     return start <= dayEnd && end >= dayStart;
@@ -35,6 +34,10 @@ function formatEventTime(iso: string): string {
   return m === "00" ? `${h12}${ampm}` : `${h12}:${m}${ampm}`;
 }
 
+function isBirthdayDate(d: Date): boolean {
+  return d.getMonth() === 4 && d.getDate() === 16; // May 16
+}
+
 export default function WeekView({ events, onDaySelect }: Props) {
   const today = new Date();
   const days = getWeekDays(today);
@@ -46,6 +49,7 @@ export default function WeekView({ events, onDaySelect }: Props) {
     >
       {days.map((day, i) => {
         const isToday = isSameDay(day, today);
+        const isBirthday = isBirthdayDate(day);
         const dayEvents = eventsForDay(events, day);
 
         return (
@@ -54,7 +58,11 @@ export default function WeekView({ events, onDaySelect }: Props) {
             className="flex flex-col flex-1"
             style={{
               borderRight: i < 6 ? "1px solid var(--border)" : undefined,
-              background: isToday ? "var(--accent-today)" : undefined,
+              background: isBirthday
+                ? "rgba(255,182,193,0.55)"
+                : isToday
+                ? "var(--accent-today)"
+                : undefined,
               minWidth: 0,
             }}
             onPointerDown={() => onDaySelect(format(day, "yyyy-MM-dd"))}
@@ -63,7 +71,7 @@ export default function WeekView({ events, onDaySelect }: Props) {
             <div
               className="flex flex-col items-center py-2"
               style={{
-                borderBottom: "1px solid var(--border)",
+                borderBottom: `1px solid ${isBirthday ? "rgba(255,105,180,0.4)" : "var(--border)"}`,
                 flexShrink: 0,
               }}
             >
@@ -72,7 +80,7 @@ export default function WeekView({ events, onDaySelect }: Props) {
                   fontSize: "0.65rem",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
-                  color: "var(--text-dim)",
+                  color: isBirthday ? "#c2185b" : "var(--text-dim)",
                 }}
               >
                 {DAY_SHORT[i]}
@@ -80,13 +88,20 @@ export default function WeekView({ events, onDaySelect }: Props) {
               <span
                 style={{
                   fontSize: "1.1rem",
-                  fontWeight: isToday ? 700 : 400,
-                  color: isToday ? "var(--accent-google)" : "var(--text)",
+                  fontWeight: isToday || isBirthday ? 700 : 400,
+                  color: isBirthday
+                    ? "#c2185b"
+                    : isToday
+                    ? "var(--accent-google)"
+                    : "var(--text)",
                   lineHeight: 1.2,
                 }}
               >
                 {day.getDate()}
               </span>
+              {isBirthday && (
+                <span style={{ fontSize: "0.85rem", lineHeight: 1 }}>🌸</span>
+              )}
             </div>
 
             {/* Events */}

@@ -6,6 +6,11 @@ import { format, parseISO } from "date-fns";
 
 const HOUR_START = 6;
 const HOUR_END = 22; // exclusive
+
+function isBirthdayDate(dateISO: string): boolean {
+  const d = new Date(dateISO + "T12:00:00");
+  return d.getMonth() === 4 && d.getDate() === 16; // May 16
+}
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 // 52px per hour → 16 hours = 832px total; comfortably scrollable on 480px screen
 const HOUR_HEIGHT_PX = 52;
@@ -83,6 +88,8 @@ export default function DayView({ dateISO, events, onBack }: Props) {
     }
   }, [dateISO]);
 
+  const birthday = isBirthdayDate(dateISO);
+
   return (
     <div
       className="flex flex-col"
@@ -95,6 +102,7 @@ export default function DayView({ dateISO, events, onBack }: Props) {
           height: "48px",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
+          background: birthday ? "rgba(255,182,193,0.45)" : undefined,
         }}
       >
         <button
@@ -102,7 +110,7 @@ export default function DayView({ dateISO, events, onBack }: Props) {
           style={{
             background: "none",
             border: "none",
-            color: "var(--accent-google)",
+            color: birthday ? "#c2185b" : "var(--accent-google)",
             fontSize: "1rem",
             padding: "4px 8px",
             borderRadius: "4px",
@@ -112,6 +120,11 @@ export default function DayView({ dateISO, events, onBack }: Props) {
           ← Back
         </button>
         <span style={{ fontSize: "0.95rem", fontWeight: 600 }}>{label}</span>
+        {birthday && (
+          <span style={{ fontSize: "0.85rem", color: "#c2185b", fontWeight: 600 }}>
+            🌸 Christine&apos;s Birthday 🌸
+          </span>
+        )}
       </div>
 
       {/* All-day events */}

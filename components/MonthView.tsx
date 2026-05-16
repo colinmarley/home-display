@@ -35,7 +35,6 @@ function buildCalendarGrid(monthDate: Date): Date[] {
   const first = startOfMonth(monthDate);
   const last = endOfMonth(monthDate);
   const gridStart = startOfWeek(first, { weekStartsOn: 1 });
-  // Always fill enough rows to cover the last day of the month
   const gridEnd = startOfWeek(addDays(last, 7), { weekStartsOn: 1 });
   const days: Date[] = [];
   let cur = gridStart;
@@ -44,6 +43,10 @@ function buildCalendarGrid(monthDate: Date): Date[] {
     cur = addDays(cur, 1);
   }
   return days;
+}
+
+function isBirthdayDate(d: Date): boolean {
+  return d.getMonth() === 4 && d.getDate() === 16; // May 16
 }
 
 export default function MonthView({ events, onDaySelect }: Props) {
@@ -128,6 +131,7 @@ export default function MonthView({ events, onDaySelect }: Props) {
         {days.map((day, i) => {
           const inMonth = isSameMonth(day, viewMonth);
           const isToday = isSameDay(day, today);
+          const isBirthday = isBirthdayDate(day);
           const dayEvents = eventsForDay(events, day);
           const isLastRow = i >= days.length - 7;
 
@@ -140,25 +144,37 @@ export default function MonthView({ events, onDaySelect }: Props) {
                 flexDirection: "column",
                 borderRight: (i % 7) < 6 ? "1px solid var(--border)" : undefined,
                 borderBottom: !isLastRow ? "1px solid var(--border)" : undefined,
-                background: isToday ? "var(--accent-today)" : undefined,
+                background: isBirthday
+                  ? "rgba(255,182,193,0.55)"
+                  : isToday
+                  ? "var(--accent-today)"
+                  : undefined,
                 opacity: inMonth ? 1 : 0.3,
                 padding: "3px 4px",
                 overflow: "hidden",
                 minHeight: 0,
               }}
             >
-              {/* Day number */}
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: isToday ? 700 : 400,
-                  color: isToday ? "var(--accent-google)" : "var(--text)",
-                  lineHeight: 1.4,
-                  flexShrink: 0,
-                }}
-              >
-                {day.getDate()}
-              </span>
+              {/* Day number + birthday indicator */}
+              <div style={{ display: "flex", alignItems: "center", gap: "2px", flexShrink: 0 }}>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: isToday || isBirthday ? 700 : 400,
+                    color: isBirthday
+                      ? "#c2185b"
+                      : isToday
+                      ? "var(--accent-google)"
+                      : "var(--text)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {day.getDate()}
+                </span>
+                {isBirthday && (
+                  <span style={{ fontSize: "0.75rem", lineHeight: 1 }}>🌸</span>
+                )}
+              </div>
 
               {/* Events */}
               <div style={{ display: "flex", flexDirection: "column", gap: "1px", overflow: "hidden" }}>
