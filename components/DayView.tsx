@@ -28,6 +28,39 @@ interface Positioned {
   heightPx: number;
 }
 
+interface PositionedWithLayout extends Positioned {
+  column: number;
+  totalColumns: number;
+}
+
+function layoutEvents(events: Positioned[]): PositionedWithLayout[] {
+  if (events.length === 0) return [];
+
+  const sorted = [...events].sort((a, b) => a.topPx - b.topPx);
+  const columnEnds: number[] = [];
+
+  const withCols: PositionedWithLayout[] = sorted.map((p) => {
+    let col = columnEnds.findIndex((end) => end <= p.topPx);
+    if (col === -1) col = columnEnds.length;
+    columnEnds[col] = p.topPx + p.heightPx;
+    return { ...p, column: col, totalColumns: 1 };
+  });
+
+  // For each event, totalColumns = highest column index among all events it overlaps + 1
+  for (let i = 0; i < withCols.length; i++) {
+    const a = withCols[i];
+    let maxCol = a.column;
+    for (const b of withCols) {
+      if (a.topPx < b.topPx + b.heightPx && a.topPx + a.heightPx > b.topPx) {
+        maxCol = Math.max(maxCol, b.column);
+      }
+    }
+    withCols[i] = { ...withCols[i], totalColumns: maxCol + 1 };
+  }
+
+  return withCols;
+}
+
 function positionEvents(events: CalEvent[], date: string): Positioned[] {
   const dayStart = new Date(`${date}T${String(HOUR_START).padStart(2, "0")}:00:00`);
   const dayEnd = new Date(`${date}T${String(HOUR_END).padStart(2, "0")}:00:00`);
@@ -201,15 +234,15 @@ export default function DayView({ dateISO, events, onBack }: Props) {
           })}
 
           {/* Event blocks */}
-          {positioned.map(({ event, topPx, heightPx }) => (
+          {layoutEvents(positioned).map(({ event, topPx, heightPx, column, totalColumns }) => (
             <div
               key={event.id}
               style={{
                 position: "absolute",
                 top: `${topPx}px`,
                 height: `${heightPx}px`,
-                left: "60px",
-                right: "8px",
+                left: `calc(60px + ${column} * (100% - 68px) / ${totalColumns})`,
+                width: `calc((100% - 68px) / ${totalColumns} - 2px)`,
                 background: event.color + "33",
                 borderLeft: `3px solid ${event.color}`,
                 borderRadius: "3px",
