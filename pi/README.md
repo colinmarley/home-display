@@ -59,7 +59,7 @@ display_rotate=2
 
 ## Updating
 
-Changes to the server code are picked up automatically — the display reloads every 15 minutes.
+Changes to the server code are picked up automatically — the display reloads itself within a minute of a new build going live. After changing the agent or browser flags, re-run setup.sh.
 To force an immediate reload: touch the screen and wait, or SSH in and reboot.
 
 To update the server:

@@ -3,41 +3,183 @@
 :root {
   --bg: #0f1117;
   --surface: #1a1d27;
+  --surface-2: #232736;
   --border: rgba(255, 255, 255, 0.08);
   --text: #e8eaed;
   --text-dim: #9aa0ab;
-  --accent-google: #4285f4;
-  --accent-apple: #fc3158;
-  --accent-today: rgba(66, 133, 244, 0.18);
+  --text-faint: #646a76;
+  --accent: #4285f4;
+  --accent-soft: rgba(66, 133, 244, 0.18);
+  --warn: #f9ab00;
+  --danger: #ea4335;
+  --ok: #34a853;
+  --rain: #6ab7ff;
+  --tabbar-h: 56px;
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
-  cursor: none;
-  user-select: none;
-  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  touch-action: manipulation;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+  height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, "Noto Sans", sans-serif;
   font-size: 14px;
   line-height: 1.3;
 }
 
-/* Hide scrollbars — touch-scrollable but no visible bar */
-* {
-  scrollbar-width: none;
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
 }
-*::-webkit-scrollbar {
-  display: none;
+
+/* ── Kiosk (the Pi touchscreen) ─────────────────────────────────────────── */
+
+.kiosk, .kiosk * {
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
+
+.kiosk {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.kiosk * { scrollbar-width: none; }
+.kiosk *::-webkit-scrollbar { display: none; }
+
+.kiosk-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.tabbar {
+  height: var(--tabbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  min-width: 0;
+}
+.tab .tab-icon { font-size: 1.25rem; line-height: 1; }
+.tab[aria-selected="true"] {
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  min-height: 36px;
+}
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+}
+
+.event-pill {
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* ── Admin (phone) ─────────────────────────────────────────────────────── */
+
+.admin {
+  min-height: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px 64px;
+  font-size: 15px;
+}
+.admin h1 { font-size: 1.4rem; font-weight: 700; margin: 4px 0 16px; }
+.admin h2 { font-size: 1.05rem; font-weight: 650; margin: 0 0 10px; }
+.admin section { margin-bottom: 18px; padding: 14px; }
+.admin input, .admin select, .admin textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+.admin input[type="checkbox"] { min-height: 0; width: 20px; height: 20px; }
+.admin input[type="color"] { padding: 2px; width: 44px; }
+.admin .btn {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-height: 40px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.admin .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.admin .btn-danger { color: var(--danger); }
+.admin .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.admin .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.admin .field > span { font-size: 0.8rem; color: var(--text-dim); }
+.admin .muted { color: var(--text-dim); font-size: 0.85rem; }
+.admin .table-wrap { overflow-x: auto; }
+.admin table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.admin td, .admin th { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }

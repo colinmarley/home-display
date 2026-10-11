@@ -2,9 +2,13 @@
 
 A self-hosted DakBoard replacement for a Raspberry Pi 4B + 7" official touchscreen. Boots directly into a full-screen kiosk display — no desktop, no cursor — showing:
 
-- **Weekly calendar** synced from Google Calendar and Apple iCloud, with tap-to-drill-down day view
-- **5-day weather forecast** (Open-Meteo, free, no API key)
-- **Photo slideshow** from a local Immich server when idle
+- **Today screen** — big clock, current conditions, hourly forecast with rain chance, an "up next" agenda for today and tomorrow, countdowns, and a list preview
+- **Calendar** — week / month / day views from Google Calendar (iCal feed) and iCloud (CalDAV), with recurring events fully expanded
+- **Weather** — hourly + 7-day forecast, sunrise/sunset, UV, NWS alerts (Open-Meteo or weather.gov, free, no API key)
+- **Lists** — shared grocery / chore / to-do lists, tap to check off on the display, add items from your phone
+- **Photo slideshow** — from an Immich album, starts when idle, cached locally so it survives Immich outages
+- **Night mode** — dims (or turns off) the backlight on a schedule; a touch wakes it
+- **Settings page** — `/admin` on your phone: sync status, night schedule, calendars, weather source, special dates, countdowns
 
 The display app (Next.js) runs in a Docker container on your server and is served over the LAN to the Pi. Updates are deployed to the server; the Pi never needs to be touched again.
 
@@ -14,26 +18,33 @@ The display app (Next.js) runs in a Docker container on your server and is serve
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  your server — always-on host                                              │
-│  /home/colin/code/home-display/docker-compose.yml  →  port 3001            │
+│  server (beelink) — /home/colin/code/home-display  →  port 3001            │
 │                                                                             │
-│  Next.js app                                                                │
-│    /api/calendar  ← fetches Google + Apple iCal URLs every 15 min          │
-│    /api/weather   ← Open-Meteo 7-day forecast, cached 1 hr                 │
-│    /api/photos    ← Immich album asset listing, cached 1 hr                │
-│    /api/photo/proxy?id=  ← proxies Immich thumbnails (keeps API key LAN)   │
-│    .env           ← all secrets, never in git                              │
+│  Background sync (instrumentation.ts → lib/sync/scheduler.ts)               │
+│    calendar  every 5 min   Google ICS + iCloud CalDAV → expanded events    │
+│    weather   every 15 min  Open-Meteo / NWS + NWS alerts                   │
+│    photos    every 30 min  Immich album list + local image cache           │
+│    → each success replaces the stored snapshot; a failure keeps the last   │
+│      good data on screen and retries with backoff                          │
+│                                                                             │
+│  ./data/home-display.db (SQLite): snapshots, settings, lists               │
+│  ./data/photo-cache/: preview-size album photos                            │
+│                                                                             │
+│  GET /api/state       everything the kiosk needs (read from the store)     │
+│  /api/photo/proxy     cached photos     /admin   settings (phone)          │
+│  /api/display/*       night schedule, wake, heartbeat (Pi agent)           │
 └────────────────────────────────────┬────────────────────────────────────────┘
                                      │ LAN  http://YOUR_SERVER_HOST:3001
 ┌────────────────────────────────────▼────────────────────────────────────────┐
 │  Raspberry Pi 4B  +  Official 7" Touchscreen (800×480)                     │
-│                                                                             │
-│  Raspberry Pi OS Lite 64-bit (Bookworm)                                    │
-│  systemd auto-login → cage (Wayland compositor)                            │
-│    → chromium-browser --kiosk http://YOUR_SERVER_HOST:3001                 │
-│         → React app with Pointer API touch events, no cursor               │
+│  Pi OS Lite 64-bit → auto-login → sway → kiosk-browser (Chromium loop)     │
+│  home-display-agent.service: backlight schedule + browser watchdog         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+The kiosk polls `/api/state` every minute and never replaces good data with an
+empty response. All dates are computed in `DISPLAY_TZ`, independent of the
+container's or the Pi's clock zone.
 
 ---
 
@@ -70,20 +81,18 @@ This is a private secret URL — do not share it.
    ```
 6. Repeat for each additional calendar you want to include (add multiple `GOOGLE_ICAL_URL_2`, etc. — see [Adding multiple calendars](#adding-multiple-calendars))
 
-### 1.2 Apple iCloud Calendar iCal URL
+### 1.2 iCloud calendars (CalDAV)
 
-1. Open [iCloud.com](https://icloud.com) → **Calendar**
-2. Click the share icon (circle with dot) next to the calendar you want
-3. Check **"Public Calendar"**
-4. Click **Copy Link** — it looks like:
-   ```
-   webcal://p01-caldav.icloud.com/published/2/XXXXXXXXXXXXXXXXXXXXXXXX
-   ```
-5. Save this URL — it is the `APPLE_ICAL_URL` in your `.env`
+iCloud is read over CalDAV with an **app-specific password** — this sees every
+calendar on the account and syncs reliably. (Published "public calendar" links
+are still supported as a fallback via `APPLE_ICAL_URL`, but they frequently
+return `503` or stop working entirely.)
 
-> **Tip:** Both `webcal://` and `https://` links are accepted. The app normalizes `webcal://` automatically.
+1. Go to [account.apple.com](https://account.apple.com) → **Sign-In and Security** → **App-Specific Passwords**
+2. Create one named `home-display` and copy it (format `abcd-efgh-ijkl-mnop`)
+3. Set `ICLOUD_USERNAME` (your Apple ID email) and `ICLOUD_APP_PASSWORD` in `.env`
 
-> **Note:** The public link is a read-only iCal feed — it does not expose write access to your calendar.
+Choose which calendars show, and their colors, later from `/admin`.
 
 ### 1.3 Immich API key
 
@@ -173,18 +182,12 @@ docker compose logs -f     # watch for "Ready on http://0.0.0.0:3001"
 
 Open **http://YOUR_SERVER_HOST:3001** in a browser on any device on the network. You should see the dashboard with the clock, weather strip, and week calendar.
 
-> **Troubleshooting:** If the calendar shows no events, check that your iCal URLs are correct and publicly accessible. Test from your server:
-> ```bash
-> curl -s "YOUR_GOOGLE_ICAL_URL" | head -5
-> # Should output: BEGIN:VCALENDAR
-> ```
->
-> You can also inspect source-level calendar status from the app:
-> ```bash
-> curl -s http://YOUR_SERVER_HOST:3001/api/calendar/debug
-> curl -s http://YOUR_SERVER_HOST:3001/api/calendar/debug?samples=1
-> ```
-> The debug output shows which iCal source succeeded, how many events were parsed, and any source-specific fetch errors.
+> **Troubleshooting:** open `http://YOUR_SERVER_HOST:3001/admin` — the **Sync
+> status** card shows each source's last successful sync and its last error
+> (e.g. a 401 from iCloud means the app-specific password is wrong). The tab bar
+> dot on the display is green when everything is fresh, amber when a source is
+> failing but data is still recent, red when data is stale or the server is
+> unreachable — tap it for details.
 
 ---
 
@@ -234,10 +237,12 @@ curl -s http://YOUR_SERVER_HOST:3001/setup.sh | sudo bash -s http://YOUR_SERVER_
 ```
 
 The script will:
-- Install `cage` (minimal Wayland compositor), `chromium-browser`, `fonts-noto`
-- Configure `getty@tty1` to auto-login as user `pi`
-- Write `~/.bash_profile` to launch `cage` → `chromium-browser --kiosk` on tty1
+- Install `sway`, `chromium`, emoji fonts, and set the Pi's timezone
+- Configure `getty@tty1` to auto-login and start sway → `kiosk-browser` (relaunches Chromium if it exits)
+- Install `home-display-agent` (systemd): follows the night schedule on the backlight, restarts Chromium if the page stops sending heartbeats, and restarts it nightly at 03:30
 - Disable screen blanking
+
+It is safe to re-run after updating the server — it refreshes the wrapper and the agent.
 
 When it finishes:
 ```bash
@@ -246,11 +251,10 @@ sudo reboot
 
 ### 3.5 Verify the kiosk
 
-After reboot, the Pi should boot directly into the dashboard. You will see:
-- No desktop environment, no taskbar, no cursor
-- The clock and weather strip on the left
-- The weekly calendar filling the right portion
-- Touch: tap any day to see the hourly breakdown, tap the back arrow to return
+After reboot, the Pi boots straight into the **Today** screen with a tab bar
+along the bottom (Today · Calendar · Weather · Lists · Photos). After 2 idle
+minutes it returns to Today; after the configured idle time it starts the
+slideshow. Check the agent with `systemctl status home-display-agent`.
 
 > If the screen stays black or shows a terminal, see [Troubleshooting](#troubleshooting).
 
@@ -260,56 +264,37 @@ After reboot, the Pi should boot directly into the dashboard. You will see:
 
 | Check | How to verify |
 |-------|--------------|
-| Server running | `docker compose ps` on your server shows `Up` |
-| Calendar loads | Open `http://YOUR_SERVER_HOST:3001` in a browser — events from this week are visible |
-| Google events | At least one Google Calendar event appears in the week view |
-| Apple events | At least one Apple Calendar event appears (different color) |
-| Weather strip | Left panel shows 5 days of forecast with temperature and emoji |
-| Idle slideshow | Leave the display untouched for 5 minutes — photos should begin cycling |
-| Touch — week → day | Tap any day column on the Pi — switches to hourly timeline |
-| Touch — day → week | Tap the ← Back button — returns to week view |
-| Touch — slideshow → calendar | Tap screen during slideshow — returns to calendar |
-| Auto-refresh | After 15 minutes, the page reloads to pick up any new events |
+| Server running | `docker compose ps` shows `Up (healthy)` |
+| Sync healthy | `/admin` → Sync status: all sources updated within their interval |
+| Calendars | Google and iCloud events both appear, recurring events on every week |
+| Weather | Today screen shows current conditions, hourly strip, 4-day outlook |
+| Lists | Add an item from `/admin` on a phone — it appears on the display within a minute |
+| Slideshow | Leave the display idle — photos cycle with clock/weather overlay; tap to exit |
+| Night mode | Set a night window covering now in `/admin` — screen dims; tap wakes it |
+| Watchdog | `sudo pkill chromium` on the Pi — the browser comes back within seconds |
 
 ---
 
 ## Configuration reference
 
-All settings live in `/home/colin/code/home-display/.env` on your server. Edit and restart to apply:
-
-```bash
-ssh your-server-host
-cd /home/colin/code/home-display
-nano .env
-docker compose restart
-```
+Secrets and sources live in `/home/colin/code/home-display/.env` (restart the
+container after editing). Everything else — night schedule, idle timers, weather
+source, calendar colors/visibility, special dates, countdowns, lists — is set from
+`/admin` and stored in `./data`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_ICAL_URL` | — | Google Calendar private iCal URL |
-| `APPLE_ICAL_URL` | — | Apple iCloud Calendar public iCal URL |
-| `WEATHER_LAT` | — | Latitude for weather forecast |
-| `WEATHER_LON` | — | Longitude for weather forecast |
-| `IMMICH_BASE_URL` | — | Immich server URL (LAN) |
-| `IMMICH_API_KEY` | — | Immich API key |
-| `IMMICH_ALBUM_ID` | — | UUID of the Immich album for slideshow |
-| `IDLE_TIMEOUT_MINUTES` | `5` | Minutes of inactivity before slideshow starts |
-| `PHOTO_INTERVAL_SECONDS` | `30` | Seconds between photo transitions |
-
-### Adding multiple calendars
-
-Multiple iCal URLs are auto-detected if you add suffixed variables:
-
-```env
-GOOGLE_ICAL_URL=https://...
-GOOGLE_ICAL_URL_2=https://...
-APPLE_ICAL_URL=webcal://...
-APPLE_ICAL_URL_2=https://...
-# Optional alias prefix also supported:
-ICLOUD_ICAL_URL=https://...
-```
-
-No code changes are needed; restart the container after editing `.env`.
+| `GOOGLE_ICAL_URL`, `GOOGLE_ICAL_URL_*` | — | Google Calendar secret iCal URL(s) |
+| `ICLOUD_USERNAME` / `ICLOUD_APP_PASSWORD` | — | iCloud CalDAV (all calendars on the account) |
+| `APPLE_ICAL_URL`, `APPLE_ICAL_URL_*` | — | Fallback published iCloud links (used only without `ICLOUD_*`) |
+| `ICAL_URL`, `ICAL_URL_*` | — | Any other `.ics` feeds |
+| `DISPLAY_TZ` | `America/Los_Angeles` | Timezone everything is rendered in |
+| `ADMIN_PIN` | — | Locks `/admin`; empty = open on the LAN |
+| `WEATHER_LAT` / `WEATHER_LON` | — | Forecast location |
+| `WEATHER_SOURCE` | `open-meteo` | Initial source (`open-meteo`, `open-meteo-gfs`, `open-meteo-ecmwf`, `nws`) |
+| `IMMICH_BASE_URL` / `IMMICH_API_KEY` / `IMMICH_ALBUM_ID` | — | Slideshow album |
+| `PHOTO_CACHE_MB` | `1024` | Cap for the local photo cache |
+| `IDLE_TIMEOUT_MINUTES` / `PHOTO_INTERVAL_SECONDS` | `10` / `30` | Initial values; change in `/admin` |
 
 ---
 
@@ -324,7 +309,7 @@ git pull
 docker compose up -d --build
 ```
 
-The Pi reloads automatically within 15 minutes, or immediately if you power-cycle it.
+The display reloads itself within a minute of a new build going live.
 
 ### Display rotation
 
@@ -353,19 +338,14 @@ If the Pi's IP changes (DHCP), the display still works as long as it can still r
 
 **Black screen after reboot**
 - SSH into the Pi: `ssh pi@YOUR_PI_HOSTNAME.local`
-- Check if cage started: `journalctl -xe | grep cage`
-- Manually test: `cage -- chromium-browser --kiosk http://YOUR_SERVER_HOST:3001`
-- If cage fails: ensure the display is detected — `ls /dev/dri/`
+- Check sway / the browser loop: `journalctl -b | grep -i -E "sway|chromium"`
+- Check the agent: `systemctl status home-display-agent` / `journalctl -u home-display-agent`
+- Ensure the display is detected — `ls /dev/dri/`
 
-**Dashboard loads but calendar is empty**
-- Verify iCal URLs are correct: `curl -sI "YOUR_URL"` should return `200 OK`
-- Check server logs: `docker compose logs home-display | grep calendar`
-- Google Calendar URLs expire if the calendar is deleted or settings are changed — regenerate the secret address
-
-**Photos not showing in slideshow**
-- Check the Immich API key is valid: `curl -H "x-api-key: YOUR_KEY" http://YOUR_IMMICH_HOST:2283/api/albums`
-- Verify the album ID is correct (compare to the UUID in the Immich URL)
-- Check proxy logs: `docker compose logs home-display | grep photo`
+**Calendar or photos missing / stale**
+- Open `/admin` → Sync status for the exact error per source, and press **Sync now**
+- Logs: `docker compose logs home-display | grep -E "\[sync\]|\[calendar\]|\[photo\]"`
+- iCloud 401: regenerate the app-specific password. Immich 401/403: the API key was revoked or lacks `album.read` / `asset.view`
 
 **Touch not working**
 - The Official 7" Pi touchscreen uses USB HID for touch on Pi 4B — ensure the USB touch cable from the display PCB is connected to a Pi USB port (in addition to the DSI ribbon cable)
@@ -383,7 +363,7 @@ If the Pi's IP changes (DHCP), the display still works as long as it can still r
 cd home-display
 cp .env.example .env   # fill in your values
 npm install
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost:3000 (sync starts on boot; data in ./data)
 ```
 
 For the Immich photo proxy to work, `IMMICH_BASE_URL` must be reachable from your dev machine.
@@ -391,6 +371,7 @@ For the Immich photo proxy to work, `IMMICH_BASE_URL` must be reachable from you
 To simulate the Pi's 800×480 viewport in Chrome DevTools: open DevTools → toggle device toolbar → set a custom device with 800×480.
 
 ```bash
+npm test               # unit tests (recurrence expansion, timezones, sync fallback)
 npm run build          # production build check
 npx tsc --noEmit       # type check only
 ```

@@ -1,265 +1,127 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { CalEvent } from "@/lib/calendar";
-import { format, parseISO } from "date-fns";
+import { addDaysKey, formatTime, minutesOfDay, startOfDay } from "@/lib/dates";
+import { eventsOn } from "@/lib/events";
+import type { CalEvent } from "@/lib/types";
 
-const HOUR_START = 6;
-const HOUR_END = 22; // exclusive
-
-function isBirthdayDate(dateISO: string): boolean {
-  const d = new Date(dateISO + "T12:00:00");
-  return d.getMonth() === 4 && d.getDate() === 16; // May 16
-}
-const TOTAL_HOURS = HOUR_END - HOUR_START;
-// 52px per hour → 16 hours = 832px total; comfortably scrollable on 480px screen
-const HOUR_HEIGHT_PX = 52;
-const MS_PER_PX = HOUR_HEIGHT_PX / (60 * 60 * 1000);
+const HOUR_PX = 52;
+const LABEL_W = 56;
 
 interface Props {
-  dateISO: string; // yyyy-MM-dd
+  day: string;
   events: CalEvent[];
-  onBack: () => void;
+  tz: string;
+  isToday: boolean;
 }
 
-interface Positioned {
-  event: CalEvent;
-  topPx: number;
-  heightPx: number;
+interface Placed {
+  e: CalEvent;
+  top: number;
+  height: number;
+  col: number;
+  cols: number;
 }
 
-interface PositionedWithLayout extends Positioned {
-  column: number;
-  totalColumns: number;
-}
-
-function layoutEvents(events: Positioned[]): PositionedWithLayout[] {
-  if (events.length === 0) return [];
-
-  const sorted = [...events].sort((a, b) => a.topPx - b.topPx);
-  const columnEnds: number[] = [];
-
-  const withCols: PositionedWithLayout[] = sorted.map((p) => {
-    let col = columnEnds.findIndex((end) => end <= p.topPx);
-    if (col === -1) col = columnEnds.length;
-    columnEnds[col] = p.topPx + p.heightPx;
-    return { ...p, column: col, totalColumns: 1 };
+/** Lay out overlapping timed events side by side. */
+function place(events: CalEvent[], day: string, tz: string): Placed[] {
+  const dayStart = startOfDay(day, tz).getTime();
+  const dayEnd = startOfDay(addDaysKey(day, 1), tz).getTime();
+  const pxPerMs = HOUR_PX / 3_600_000;
+  const items = events.map((e) => {
+    const s = Math.max(new Date(e.start).getTime(), dayStart);
+    const en = Math.min(Math.max(new Date(e.end).getTime(), s + 15 * 60_000), dayEnd);
+    return { e, s, en, top: (s - dayStart) * pxPerMs, height: Math.max((en - s) * pxPerMs, 22), col: 0, cols: 1 };
   });
+  items.sort((a, b) => a.s - b.s || b.en - a.en);
 
-  // For each event, totalColumns = highest column index among all events it overlaps + 1
-  for (let i = 0; i < withCols.length; i++) {
-    const a = withCols[i];
-    let maxCol = a.column;
-    for (const b of withCols) {
-      if (a.topPx < b.topPx + b.heightPx && a.topPx + a.heightPx > b.topPx) {
-        maxCol = Math.max(maxCol, b.column);
-      }
-    }
-    withCols[i] = { ...withCols[i], totalColumns: maxCol + 1 };
+  // Group into clusters of transitively-overlapping events, assign columns greedily.
+  let cluster: typeof items = [];
+  let clusterEnd = 0;
+  const flush = () => {
+    const cols = Math.max(...cluster.map((c) => c.col)) + 1;
+    for (const c of cluster) c.cols = cols;
+    cluster = [];
+  };
+  for (const it of items) {
+    if (cluster.length && it.s >= clusterEnd) flush();
+    const used = new Set(cluster.filter((c) => c.en > it.s).map((c) => c.col));
+    let col = 0;
+    while (used.has(col)) col++;
+    it.col = col;
+    cluster.push(it);
+    clusterEnd = Math.max(clusterEnd, it.en);
   }
-
-  return withCols;
+  if (cluster.length) flush();
+  return items;
 }
 
-function positionEvents(events: CalEvent[], date: string): Positioned[] {
-  const dayStart = new Date(`${date}T${String(HOUR_START).padStart(2, "0")}:00:00`);
-  const dayEnd = new Date(`${date}T${String(HOUR_END).padStart(2, "0")}:00:00`);
-
-  return events
-    .filter((e) => {
-      if (e.allDay) return false;
-      const s = new Date(e.start);
-      const en = new Date(e.end);
-      const ds = new Date(date + "T00:00:00");
-      const de = new Date(date + "T23:59:59");
-      return s <= de && en >= ds;
-    })
-    .map((e) => {
-      const eStart = new Date(e.start);
-      const eEnd = new Date(e.end);
-      const clampedStart = eStart < dayStart ? dayStart : eStart;
-      const clampedEnd = eEnd > dayEnd ? dayEnd : eEnd;
-      const topPx = (clampedStart.getTime() - dayStart.getTime()) * MS_PER_PX;
-      const heightPx = Math.max(
-        (clampedEnd.getTime() - clampedStart.getTime()) * MS_PER_PX,
-        24
-      );
-      return { event: e, topPx, heightPx };
-    });
-}
-
-function allDayEvents(events: CalEvent[], date: string): CalEvent[] {
-  return events.filter((e) => {
-    if (!e.allDay) return false;
-    const s = new Date(e.start);
-    const en = new Date(e.end);
-    const ds = new Date(date + "T00:00:00");
-    const de = new Date(date + "T23:59:59");
-    return s <= de && en >= ds;
-  });
-}
-
-function fmt12(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = d.getMinutes().toString().padStart(2, "0");
-  const ap = d.getHours() >= 12 ? "PM" : "AM";
-  return d.getMinutes() === 0 ? `${h} ${ap}` : `${h}:${m} ${ap}`;
-}
-
-export default function DayView({ dateISO, events, onBack }: Props) {
-  const label = format(parseISO(dateISO), "EEEE, MMMM d");
-  const hours = Array.from({ length: TOTAL_HOURS }, (_, i) => HOUR_START + i);
-  const positioned = positionEvents(events, dateISO);
-  const allDay = allDayEvents(events, dateISO);
+export default function DayView({ day, events, tz, isToday }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dayEvents = eventsOn(events, day, tz);
+  const allDay = dayEvents.filter((e) => e.allDay);
+  const placed = place(dayEvents.filter((e) => !e.allDay), day, tz);
+  const nowMin = isToday ? minutesOfDay(new Date(), tz) : null;
 
-  // Auto-scroll to 8am (2 hours past start) when opening
+  // Open scrolled to now (today) or to the first event / 8 am.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = Math.max(0, (8 - HOUR_START) * HOUR_HEIGHT_PX - 16);
-    }
-  }, [dateISO]);
-
-  const birthday = isBirthdayDate(dateISO);
+    const el = scrollRef.current;
+    if (!el) return;
+    const firstTop = placed.length ? Math.min(...placed.map((p) => p.top)) : 8 * HOUR_PX;
+    const target = nowMin !== null ? (nowMin / 60 - 1) * HOUR_PX : firstTop - 20;
+    el.scrollTop = Math.max(0, target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
 
   return (
-    <div
-      className="flex flex-col"
-      style={{ height: "100vh", width: "100vw", background: "var(--bg)" }}
-    >
-      {/* Header */}
-      <div
-        className="flex items-center gap-4 px-4"
-        style={{
-          height: "48px",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-          background: birthday ? "rgba(255,182,193,0.45)" : undefined,
-        }}
-      >
-        <button
-          onPointerDown={onBack}
-          style={{
-            background: "none",
-            border: "none",
-            color: birthday ? "#c2185b" : "var(--accent-google)",
-            fontSize: "1rem",
-            padding: "4px 8px",
-            borderRadius: "4px",
-            cursor: "none",
-          }}
-        >
-          ← Back
-        </button>
-        <span style={{ fontSize: "0.95rem", fontWeight: 600 }}>{label}</span>
-        {birthday && (
-          <span style={{ fontSize: "0.85rem", color: "#c2185b", fontWeight: 600 }}>
-            🌸 Christine&apos;s Birthday 🌸
-          </span>
-        )}
-      </div>
-
-      {/* All-day events */}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {allDay.length > 0 && (
-        <div
-          className="flex flex-wrap gap-1 px-3 py-1"
-          style={{
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
-          }}
-        >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "6px 10px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           {allDay.map((e) => (
-            <div
-              key={e.id}
-              style={{
-                background: e.color + "33",
-                borderLeft: `2px solid ${e.color}`,
-                borderRadius: "2px",
-                padding: "2px 6px",
-                fontSize: "0.8rem",
-                color: "var(--text)",
-              }}
-            >
+            <div key={e.id} className="event-pill" style={{ background: e.color + "44", borderLeft: `3px solid ${e.color}` }}>
               {e.title}
             </div>
           ))}
         </div>
       )}
-
-      {/* Hourly timeline — scrollable */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
-        <div style={{ position: "relative", height: `${TOTAL_HOURS * HOUR_HEIGHT_PX}px` }}>
-          {/* Hour lines + labels */}
-          {hours.map((h) => {
-            const topPx = (h - HOUR_START) * HOUR_HEIGHT_PX;
-            const hourLabel =
-              h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
-            return (
-              <div
-                key={h}
-                style={{
-                  position: "absolute",
-                  top: `${topPx}px`,
-                  left: 0,
-                  right: 0,
-                  display: "flex",
-                  alignItems: "flex-start",
-                }}
-              >
-                <span
-                  style={{
-                    width: "52px",
-                    fontSize: "0.7rem",
-                    color: "var(--text-dim)",
-                    textAlign: "right",
-                    paddingRight: "8px",
-                    paddingTop: "2px",
-                    flexShrink: 0,
-                    lineHeight: 1,
-                  }}
-                >
-                  {hourLabel}
-                </span>
-                <div
-                  style={{
-                    flex: 1,
-                    height: "1px",
-                    background: "var(--border)",
-                    marginTop: "0.55em",
-                  }}
-                />
-              </div>
-            );
-          })}
-
-          {/* Event blocks */}
-          {layoutEvents(positioned).map(({ event, topPx, heightPx, column, totalColumns }) => (
+      <div ref={scrollRef} className="scroll-y" style={{ flex: 1 }}>
+        <div style={{ position: "relative", height: 24 * HOUR_PX }}>
+          {Array.from({ length: 24 }, (_, h) => (
+            <div key={h} style={{ position: "absolute", top: h * HOUR_PX, left: 0, right: 0, display: "flex" }}>
+              <span className="num" style={{ width: LABEL_W, textAlign: "right", paddingRight: 8, fontSize: "0.7rem", color: "var(--text-faint)", transform: "translateY(-0.5em)" }}>
+                {h === 0 ? "" : `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`}
+              </span>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+          ))}
+          {placed.map(({ e, top, height, col, cols }) => (
             <div
-              key={event.id}
+              key={e.id}
+              className="event-pill"
               style={{
                 position: "absolute",
-                top: `${topPx}px`,
-                height: `${heightPx}px`,
-                left: `calc(60px + ${column} * (100% - 68px) / ${totalColumns})`,
-                width: `calc((100% - 68px) / ${totalColumns} - 2px)`,
-                background: event.color + "33",
-                borderLeft: `3px solid ${event.color}`,
-                borderRadius: "3px",
-                padding: "2px 6px",
-                overflow: "hidden",
+                top,
+                height,
+                left: `calc(${LABEL_W + 4}px + (100% - ${LABEL_W + 12}px) * ${col / cols})`,
+                width: `calc((100% - ${LABEL_W + 12}px) / ${cols} - 3px)`,
+                background: e.color + "33",
+                borderLeft: `3px solid ${e.color}`,
               }}
             >
-              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.3 }}>
-                {event.title}
-              </div>
-              {heightPx > 32 && (
-                <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
-                  {fmt12(event.start)} – {fmt12(event.end)}
+              <div style={{ fontWeight: 600 }}>{e.title}</div>
+              {height > 34 && (
+                <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                  {formatTime(e.start, tz)} – {formatTime(e.end, tz)}
+                  {e.location ? ` · ${e.location}` : ""}
                 </div>
               )}
             </div>
           ))}
+          {nowMin !== null && (
+            <div style={{ position: "absolute", top: (nowMin / 60) * HOUR_PX, left: LABEL_W - 4, right: 0, height: 2, background: "var(--danger)" }}>
+              <span style={{ position: "absolute", left: -4, top: -4, width: 10, height: 10, borderRadius: 999, background: "var(--danger)" }} />
+            </div>
+          )}
         </div>
       </div>
     </div>

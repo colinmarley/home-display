@@ -1,137 +1,68 @@
 "use client";
 
-import type { CalEvent } from "@/lib/calendar";
-import { startOfWeek, addDays, isSameDay, format } from "date-fns";
-
-const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+import { addDaysKey, formatTime, keyParts, weekdayName, weekdayOfKey } from "@/lib/dates";
+import { eventsOn, specialDateOn, startsBefore } from "@/lib/events";
+import type { CalEvent, Settings } from "@/lib/types";
 
 interface Props {
+  weekStart: string;
+  today: string;
   events: CalEvent[];
-  onDaySelect: (dateISO: string) => void;
+  settings: Settings;
+  onDay: (key: string) => void;
 }
 
-function getWeekDays(baseDate: Date): Date[] {
-  const start = startOfWeek(baseDate, { weekStartsOn: 1 });
-  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-}
-
-function eventsForDay(events: CalEvent[], day: Date): CalEvent[] {
-  return events.filter((e) => {
-    const start = new Date(e.start);
-    const end = new Date(e.end);
-    const dayStart = new Date(day); dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
-    return start <= dayEnd && end >= dayStart;
-  });
-}
-
-function formatEventTime(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours();
-  const m = d.getMinutes().toString().padStart(2, "0");
-  const ampm = h >= 12 ? "p" : "a";
-  const h12 = h % 12 || 12;
-  return m === "00" ? `${h12}${ampm}` : `${h12}:${m}${ampm}`;
-}
-
-function isBirthdayDate(d: Date): boolean {
-  return d.getMonth() === 4 && d.getDate() === 16; // May 16
-}
-
-export default function WeekView({ events, onDaySelect }: Props) {
-  const today = new Date();
-  const days = getWeekDays(today);
+export default function WeekView({ weekStart, today, events, settings, onDay }: Props) {
+  const tz = settings.tz;
+  const days = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i));
 
   return (
-    <div
-      className="flex h-full"
-      style={{ borderLeft: "1px solid var(--border)" }}
-    >
-      {days.map((day, i) => {
-        const isToday = isSameDay(day, today);
-        const isBirthday = isBirthdayDate(day);
-        const dayEvents = eventsForDay(events, day);
-
+    <div style={{ display: "flex", height: "100%" }}>
+      {days.map((key, i) => {
+        const isToday = key === today;
+        const past = key < today;
+        const special = specialDateOn(key, settings);
+        const dayEvents = eventsOn(events, key, tz);
         return (
           <div
-            key={i}
-            className="flex flex-col flex-1"
+            key={key}
+            onClick={() => onDay(key)}
             style={{
-              borderRight: i < 6 ? "1px solid var(--border)" : undefined,
-              background: isBirthday
-                ? "rgba(255,182,193,0.55)"
-                : isToday
-                ? "var(--accent-today)"
-                : undefined,
+              flex: 1,
               minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              borderRight: i < 6 ? "1px solid var(--border)" : undefined,
+              background: special ? "rgba(255,143,184,0.14)" : isToday ? "var(--accent-soft)" : undefined,
+              opacity: past ? 0.6 : 1,
             }}
-            onPointerDown={() => onDaySelect(format(day, "yyyy-MM-dd"))}
           >
-            {/* Header */}
-            <div
-              className="flex flex-col items-center py-2"
-              style={{
-                borderBottom: `1px solid ${isBirthday ? "rgba(255,105,180,0.4)" : "var(--border)"}`,
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  color: isBirthday ? "#c2185b" : "var(--text-dim)",
-                }}
-              >
-                {DAY_SHORT[i]}
-              </span>
-              <span
-                style={{
-                  fontSize: "1.1rem",
-                  fontWeight: isToday || isBirthday ? 700 : 400,
-                  color: isBirthday
-                    ? "#c2185b"
-                    : isToday
-                    ? "var(--accent-google)"
-                    : "var(--text)",
-                  lineHeight: 1.2,
-                }}
-              >
-                {day.getDate()}
-              </span>
-              {isBirthday && (
-                <span style={{ fontSize: "0.85rem", lineHeight: 1 }}>🌸</span>
-              )}
+            <div style={{ textAlign: "center", padding: "6px 0 4px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              <div className="label" style={{ color: isToday ? "var(--accent)" : undefined }}>
+                {weekdayName(weekdayOfKey(key), true)}
+              </div>
+              <div className="num" style={{ fontSize: "1.2rem", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : undefined }}>
+                {keyParts(key).day}
+                {special && <span style={{ fontSize: "0.85rem", marginLeft: 2 }}>{special.emoji}</span>}
+              </div>
             </div>
-
-            {/* Events */}
-            <div
-              className="flex flex-col gap-0.5 p-0.5"
-              style={{ flex: 1, overflowY: "auto" }}
-            >
+            <div className="scroll-y" style={{ flex: 1, padding: 3, display: "flex", flexDirection: "column", gap: 3 }}>
               {dayEvents.map((e) => (
                 <div
                   key={e.id}
+                  className="event-pill"
                   style={{
-                    background: e.color + "33",
-                    borderLeft: `2px solid ${e.color}`,
-                    borderRadius: "3px",
-                    padding: "5px 5px",
-                    fontSize: "0.82rem",
-                    lineHeight: 1.25,
-                    minHeight: "34px",
-                    overflow: "hidden",
-                    whiteSpace: "normal",
+                    background: e.allDay ? e.color + "55" : e.color + "26",
+                    borderLeft: `3px solid ${e.color}`,
                     display: "-webkit-box",
-                    WebkitLineClamp: 2,
+                    WebkitLineClamp: 3,
                     WebkitBoxOrient: "vertical",
-                    color: "var(--text)",
+                    flexShrink: 0,
                   }}
-                  title={e.title}
                 >
                   {!e.allDay && (
-                    <span style={{ color: "var(--text-dim)", marginRight: "4px" }}>
-                      {formatEventTime(e.start)}
+                    <span className="num" style={{ color: "var(--text-dim)", marginRight: 4 }}>
+                      {startsBefore(e, key, tz) ? "…" : formatTime(e.start, tz, true)}
                     </span>
                   )}
                   {e.title}

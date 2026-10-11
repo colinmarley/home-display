@@ -5,12 +5,21 @@ services:
       - "3001:3001"
     env_file: .env
     environment:
+      - TZ=America/Los_Angeles
       - HOST_ID=beelink
       - NEXT_PUBLIC_HOST_ID=beelink
       - NEXT_PUBLIC_LOG_PROJECT=home-display
       - NEXT_PUBLIC_LOG_SERVICE=web
+    volumes:
+      # SQLite store (last-good sync snapshots, settings, lists) + photo cache
+      - ./data:/app/data
     labels:
       logging: "promtail"
       logging_project: "home-display"
       logging_service: "web"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/display/state?format=text"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped

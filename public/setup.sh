@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Home Display — Pi kiosk setup script
-# Usage: bash <(curl -s http://YOUR_SERVER_HOST:3001/setup.sh) [APP_URL]
+# Usage: curl -s http://YOUR_SERVER_HOST:3001/setup.sh | sudo bash -s http://YOUR_SERVER_HOST:3001
+# Safe to re-run: updates the browser wrapper and display agent in place.
 # Targets: Raspberry Pi OS Lite 64-bit (Bookworm), user: pi
 set -e
 
@@ -22,7 +23,11 @@ apt-get install -y --no-install-recommends \
   libinput-tools \
   fonts-noto \
   fonts-noto-color-emoji \
-  xdg-user-dirs
+  xdg-user-dirs \
+  curl
+
+# ── Timezone (the app renders in its own configured zone; this keeps logs sane)
+timedatectl set-timezone "${TZ_NAME:-America/Los_Angeles}" || true
 
 # ── Auto-login on tty1 ────────────────────────────────────────────────────────
 echo "==> Configuring auto-login for $KIOSK_USER on tty1..."
@@ -32,6 +37,56 @@ cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << EOF
 ExecStart=
 ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
+
+# ── Browser wrapper: relaunches Chromium whenever it exits ───────────────────
+echo "==> Writing kiosk-browser wrapper..."
+cat > /usr/local/bin/kiosk-browser << BROWSEREOF
+#!/usr/bin/env bash
+# Started by sway. The display agent restarts Chromium by killing it; this
+# loop brings it straight back.
+while true; do
+  chromium \
+    --kiosk \
+    --noerrdialogs \
+    --disable-infobars \
+    --touch-events=enabled \
+    --ozone-platform=wayland \
+    --disable-features=TranslateUI \
+    --disable-session-crashed-bubble \
+    --disable-restore-session-state \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --check-for-update-interval=31536000 \
+    "$APP_URL"
+  sleep 2
+done
+BROWSEREOF
+chmod 755 /usr/local/bin/kiosk-browser
+
+# ── Display agent: backlight schedule + browser watchdog ─────────────────────
+echo "==> Installing display agent..."
+curl -fsS "$APP_URL/pi-agent.sh" -o /usr/local/bin/home-display-agent
+chmod 755 /usr/local/bin/home-display-agent
+cat > /etc/default/home-display << AGENTEOF
+APP_URL=$APP_URL
+KIOSK_USER=$KIOSK_USER
+NIGHTLY_RESTART=03:30
+AGENTEOF
+cat > /etc/systemd/system/home-display-agent.service << 'UNITEOF'
+[Unit]
+Description=Home Display backlight + browser watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/home-display
+ExecStart=/usr/local/bin/home-display-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
 
 # ── Sway kiosk config ─────────────────────────────────────────────────────────
 echo "==> Writing sway config..."
@@ -46,17 +101,7 @@ input type:touch map_to_output DSI-1
 # Disable all key bindings except power off
 bindsym --locked XF86PowerOff exec swaymsg exit
 
-exec chromium \\
-  --kiosk \\
-  --noerrdialogs \\
-  --disable-infobars \\
-  --touch-events=enabled \\
-  --ozone-platform=wayland \\
-  --disable-features=TranslateUI \\
-  --disable-session-crashed-bubble \\
-  --disable-restore-session-state \\
-  --check-for-update-interval=31536000 \\
-  "$APP_URL"
+exec /usr/local/bin/kiosk-browser
 SWAYEOF
 chown -R "$KIOSK_USER:$KIOSK_USER" "$SWAY_CONFIG_DIR"
 
@@ -88,6 +133,7 @@ fi
 # ── Enable getty autologin ────────────────────────────────────────────────────
 systemctl daemon-reload
 systemctl enable getty@tty1
+systemctl enable --now home-display-agent.service
 
 echo ""
 echo "✓ Setup complete. Reboot to start the kiosk:"
