@@ -24,4 +24,5 @@ COPY --from=builder /app/public ./public
 RUN mkdir -p /app/data
 
 EXPOSE 3001
-CMD ["node", "server.js"]
+# node:sqlite is stable enough for a single-writer store; skip its startup warning.
+CMD ["node", "--disable-warning=ExperimentalWarning", "server.js"]
