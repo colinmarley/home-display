@@ -4,4 +4,13 @@ services:
     ports:
       - "3001:3001"
     env_file: .env
+    environment:
+      - HOST_ID=beelink
+      - NEXT_PUBLIC_HOST_ID=beelink
+      - NEXT_PUBLIC_LOG_PROJECT=home-display
+      - NEXT_PUBLIC_LOG_SERVICE=web
+    labels:
+      logging: "promtail"
+      logging_project: "home-display"
+      logging_service: "web"
     restart: unless-stopped
