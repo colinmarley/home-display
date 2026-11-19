@@ -18,7 +18,7 @@ The display app (Next.js) runs in a Docker container on your server and is serve
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  server (beelink) — /home/colin/code/home-display  →  port 3001            │
+│  server (any Docker host) — ~/home-display  →  port 3001                    │
 │                                                                             │
 │  Background sync (instrumentation.ts → lib/sync/scheduler.ts)               │
 │    calendar  every 5 min   Google ICS + iCloud CalDAV → expanded events    │
@@ -117,7 +117,7 @@ Find your latitude and longitude (decimal format). The easiest way:
 
 1. Open [Google Maps](https://maps.google.com), right-click your location
 2. Click the coordinates at the top of the context menu to copy them
-3. Example: `37.7749, -122.4194` → `WEATHER_LAT=37.7749`, `WEATHER_LON=-122.4194`
+3. Example (San Francisco): `37.7749, -122.4194` → `WEATHER_LAT=37.7749`, `WEATHER_LON=-122.4194`
 
 ---
 
@@ -130,17 +130,17 @@ From your dev machine, push to GitHub and clone on your server — or use `scp`:
 ```bash
 # Option A: GitHub
 ssh your-server-host
-git clone https://github.com/colinmarley/home-display /home/colin/code/home-display
+git clone https://github.com/colinmarley/home-display ~/home-display
 
-# Option B: scp from Windows
-scp -r /c/Users/colin/code/home-display your-server-host:/home/colin/code/home-display
+# Option B: copy from your dev machine
+scp -r ./home-display your-server-host:~/home-display
 ```
 
 ### 2.2 Create the .env file on your server
 
 ```bash
 ssh your-server-host
-cd /home/colin/code/home-display
+cd ~/home-display
 cp .env.example .env
 nano .env   # or: vim .env
 ```
@@ -167,7 +167,7 @@ git status   # .env should not appear
 ### 2.3 Build and start the container
 
 ```bash
-cd /home/colin/code/home-display
+cd ~/home-display
 docker compose up -d --build
 ```
 
@@ -277,7 +277,7 @@ slideshow. Check the agent with `systemctl status home-display-agent`.
 
 ## Configuration reference
 
-Secrets and sources live in `/home/colin/code/home-display/.env` (restart the
+Secrets and sources live in `.env` next to `docker-compose.yml` (restart the
 container after editing). Everything else — night schedule, idle timers, weather
 source, calendar colors/visibility, special dates, countdowns, lists — is set from
 `/admin` and stored in `./data`.
@@ -295,6 +295,13 @@ source, calendar colors/visibility, special dates, countdowns, lists — is set 
 | `IMMICH_BASE_URL` / `IMMICH_API_KEY` / `IMMICH_ALBUM_ID` | — | Slideshow album |
 | `PHOTO_CACHE_MB` | `1024` | Cap for the local photo cache |
 | `IDLE_TIMEOUT_MINUTES` / `PHOTO_INTERVAL_SECONDS` | `10` / `30` | Initial values; change in `/admin` |
+| `HOST_PORT` | `3001` | docker compose: published host port |
+| `TZ` | `America/Los_Angeles` | docker compose: container clock zone (logs only; rendering uses `DISPLAY_TZ`) |
+| `HOST_ID` | `home-display` | docker compose: host label on structured logs |
+
+On the Pi, `setup.sh` takes the server URL as its argument and writes it to
+`/etc/default/home-display` as `APP_URL`; the display agent refuses to start
+without it.
 
 ---
 
@@ -304,7 +311,7 @@ source, calendar colors/visibility, special dates, countdowns, lists — is set 
 
 ```bash
 ssh your-server-host
-cd /home/colin/code/home-display
+cd ~/home-display
 git pull
 docker compose up -d --build
 ```
@@ -375,3 +382,9 @@ npm test               # unit tests (recurrence expansion, timezones, sync fallb
 npm run build          # production build check
 npx tsc --noEmit       # type check only
 ```
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Colin Marley

@@ -5,7 +5,13 @@
 # Targets: Raspberry Pi OS Lite 64-bit (Bookworm), user: pi
 set -e
 
-APP_URL="${1:-http://YOUR_SERVER_HOST:3001}"
+APP_URL="${1:-${APP_URL:-}}"
+if [[ -z "$APP_URL" ]]; then
+  echo "error: server URL required." >&2
+  echo "usage: curl -s http://YOUR_SERVER_HOST:3001/setup.sh | sudo bash -s http://YOUR_SERVER_HOST:3001" >&2
+  exit 2
+fi
+APP_URL="${APP_URL%/}"
 KIOSK_USER="${SUDO_USER:-pi}"
 KIOSK_UID=$(id -u "$KIOSK_USER" 2>/dev/null || echo "1000")
 
