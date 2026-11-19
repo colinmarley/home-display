@@ -10,7 +10,17 @@
 # Config: /etc/default/home-display (APP_URL, KIOSK_USER, NIGHTLY_RESTART).
 
 set -u
-APP_URL="${APP_URL:-http://192.168.0.239:3001}"
+# Server URL: first argument, else APP_URL from the environment (setup.sh
+# writes it to /etc/default/home-display). No default: a wrong guess would
+# silently watchdog against the wrong host.
+APP_URL="${1:-${APP_URL:-}}"
+if [[ -z "$APP_URL" ]]; then
+  echo "[agent] error: APP_URL is not set." >&2
+  echo "[agent]   Set APP_URL=http://YOUR_SERVER_HOST:3001 in /etc/default/home-display" >&2
+  echo "[agent]   (re-run setup.sh), or pass the URL as the first argument." >&2
+  exit 2
+fi
+APP_URL="${APP_URL%/}"
 KIOSK_USER="${KIOSK_USER:-pi}"
 NIGHTLY_RESTART="${NIGHTLY_RESTART:-03:30}"
 POLL_SECONDS="${POLL_SECONDS:-3}"
